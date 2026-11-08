@@ -1,0 +1,17 @@
+name: collect
+on:
+  schedule:
+    - cron: "30 23 * * *"
+  workflow_dispatch:
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv tool install https://github.com/Panniantong/agent-reach/archive/refs/tags/v1.6.0.zip
+      - run: agent-reach setup
+      - run: python3 collect.py
+        env:
+          APPS_SCRIPT_URL: ${{ secrets.APPS_SCRIPT_URL }}
+          SHARED_TOKEN: ${{ secrets.SHARED_TOKEN }}
