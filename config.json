@@ -1,4 +1,7 @@
 {
   "youtube_queries": ["Zerodha", "Groww", "Angel One", "Upstox", "Dhan", "ICICI Direct", "INDmoney"],
-  "press_pages": []
+  "press_pages": ["https://zerodha.com/z-connect/updates",
+  "https://upstox.com/press-releases/",
+  "https://groww.in/press",
+  "https://www.angelone.in/investor-relations/company-stock-exchange-announcements"]
 }
