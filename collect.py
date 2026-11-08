@@ -57,7 +57,7 @@ for company, c in cfg["youtube"].items():
             else:
                 a = it.get("author") or "?"
                 dropped_authors[a] = dropped_authors.get(a, 0) + 1
-    fresh, old = [], 0
+    fresh, old, undated, read_errors = [], 0, [], {}
     for it in kept[:8]:
         d = ar(["youtube", "read", it["url"]])
         fetches += 1
@@ -70,7 +70,14 @@ for company, c in cfg["youtube"].items():
                 fresh.append(trim([v])[0])
             else:
                 old += 1
+        else:
+            e = (d.get("error") or {})
+            msg = str(e.get("code") or e.get("message") or "unknown")[:160]
+            read_errors[msg] = read_errors.get(msg, 0) + 1
+            it["date_unknown"] = True
+            undated.append(trim([it])[0])
     result["youtube"][company] = {
+        "undated": undated, "read_errors": read_errors,
         "search_ok": search_ok, "official_found": len(kept), "fresh": fresh,
         "older_than_window": old, "dropped_authors": dict(sorted(dropped_authors.items(), key=lambda x: -x[1])[:5]),
     }
@@ -87,7 +94,7 @@ for url in cfg["press_pages"]:
 result["status"] = f"{ok}/{fetches} fetches succeeded"
 print(result["status"])
 for company, y in result["youtube"].items():
-    print(f"YT {company}: search_ok={y['search_ok']} official={y['official_found']} fresh={len(y['fresh'])} old={y['older_than_window']}")
+    print(f"YT {company}: search_ok={y['search_ok']} official={y['official_found']} fresh={len(y['fresh'])} old={y['older_than_window']} undated={len(y['undated'])} errors={y['read_errors']}")
 
 req = urllib.request.Request(
     os.environ["APPS_SCRIPT_URL"],
