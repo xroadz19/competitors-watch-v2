@@ -3,7 +3,7 @@
 import json, os, re, subprocess, datetime, urllib.request
 from email.utils import parsedate_to_datetime
 
-MAX_AGE = 3
+MAX_AGE = 1
 LIMIT = 4000
 TODAY = datetime.date.today()
 X = {"Zerodha": ["zerodha"], "Groww": ["_groww", "TradeWithGroww_"], "Angel One": ["AngelOne"],
