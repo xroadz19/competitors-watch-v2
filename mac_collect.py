@@ -13,7 +13,7 @@ TODAY = NOW.date()
 LIMIT = 4000
 
 X = {
- "Zerodha": ["zerodha","zerodhamarkets","ZerodhaVarsity","CoinByZerodha","nithin0dha","tradingqna","Zero1byZerodha","zerodhacapital","Rainmatterin","ZerodhaAMC","nikhilkamathcio","karthikrangappa","vishaljain2510","SubtextZerodha","zerodhaonline"],
+ "Zerodha": ["zerodha","zerodhamarkets","ZerodhaVarsity","CoinByZerodha","nithin0dha","tradingqna","Zero1byZerodha","zerodhacapital","Rainmatterin","nikhilkamathcio","karthikrangappa","vishaljain2510","SubtextZerodha"],
  "Groww": ["_groww","Growwamcltd","TradeWithGroww_","lkeshre","_harshjain26","ishanishu"],
  "Angel One": ["AngelOne","AngelOneMF","ionicwealth","DineshThakkar","kenghe","nalinmoniz","abhymurarka","ankitapathak_"],
  "Upstox": ["upstox","UpstoxSupport","vyaditya"],
@@ -22,12 +22,12 @@ X = {
  "INDmoney": ["INDmoneyApp","ashishkashyap","Nikhilbehl_"]}
 YT = {
  "Zerodha": ["@zerodhaonline","@marketsbyzerodha","@varsitybyzerodha"],
- "Groww": ["@Groww","@TradingwithGroww","@MutualFundsAtGroww"],
+ "Groww": ["@Groww","@TradingwithGroww"],
  "Angel One": ["@angelone"], "Upstox": ["@UpstoxOfficial"],
  "Dhan": ["@DhanHQ","@AIandAlgosbyDhan"], "ICICI Direct": ["@ICICIDirectOfficial"], "INDmoney": ["@INDmoney"]}
-BRANDS = {"Zerodha": "Zerodha OR Kite", "Groww": "Groww", "Angel One": '"Angel One"', "Upstox": "Upstox",
-          "Dhan": "Dhan", "ICICI Direct": '"ICICI Direct" OR ICICIdirect', "INDmoney": "INDmoney OR INDstocks"}
-COMPLAINT = '(issue OR glitch OR "not working" OR failed OR withdrawal OR scam OR complaint OR stuck OR down OR error)'
+BRANDS = {"Zerodha": "Zerodha", "Groww": "Groww", "Angel One": "Angel One", "Upstox": "Upstox",
+          "Dhan": "Dhan", "ICICI Direct": "ICICI Direct", "INDmoney": "INDmoney"}
+COMPLAINT = ["issue", "not working", "withdrawal problem"]
 
 def env():
     for line in open(os.path.expanduser("~/.cw2_env")):
@@ -140,13 +140,17 @@ for co, y in res["youtube"].items():
 
 # 3) Customer mentions (last, so a failure here cannot affect the X step)
 for co, q in BRANDS.items():
-    r = arx(["twitter", "search", f"({q}) {COMPLAINT} since:{START:%Y-%m-%d}", "--limit", "20"]); n += 1
-    if r.get("ok"): ok += 1
-    hits = []
-    for it in r.get("items") or []:
-        if in_window(it.get("published_at")) and (it.get("author") or "").lower() not in own:
-            hits.append(trim(it))
-    res["mentions"][co] = {"posts": hits[:12], "error": None if r.get("ok") else err(r)}
+    hits, seen, errs = [], set(), None
+    for c in COMPLAINT:
+        r = arx(["twitter", "search", f"{q} {c} since:{START:%Y-%m-%d}", "--limit", "15"]); n += 1
+        if r.get("ok"): ok += 1
+        else: errs = err(r)
+        for it in r.get("items") or []:
+            t = trim(it); k = str(t.get("url") or t.get("text"))[:120]
+            if k in seen: continue
+            if in_window(it.get("published_at")) and (it.get("author") or "").lower() not in own:
+                seen.add(k); hits.append(t)
+    res["mentions"][co] = {"posts": hits[:12], "error": errs if not hits else None}
     print(f"MENTIONS {co}: kept={len(hits)} error={res['mentions'][co]['error']}")
 
 res["status"] = f"{ok}/{n} fetches succeeded"
