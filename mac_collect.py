@@ -1,24 +1,36 @@
 #!/usr/bin/env python3
-"""Competitors Watch 2.0 - Mac collector (X + YouTube via Agent Reach). Read-only."""
-import json, os, re, subprocess, datetime, urllib.request
+"""Competitors Watch 2.0 - Mac collector v2: same sources as the live flow. Read-only."""
+import json, os, re, shutil, subprocess, datetime, urllib.request
 from email.utils import parsedate_to_datetime
+from concurrent.futures import ThreadPoolExecutor
 
-MAX_AGE = 1
+IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+NOW = datetime.datetime.now(IST)
+END = NOW.replace(hour=6, minute=0, second=0, microsecond=0)
+if NOW < END: END -= datetime.timedelta(days=1)
+START = END - datetime.timedelta(days=1)
+TODAY = NOW.date()
 LIMIT = 4000
-TODAY = datetime.date.today()
-X = {"Zerodha": ["zerodha"], "Groww": ["_groww", "TradeWithGroww_"], "Angel One": ["AngelOne"],
-     "Upstox": ["upstox"], "Dhan": ["DhanHQ"], "ICICI Direct": ["icici_direct"], "INDmoney": ["INDmoneyApp"]}
-YT = {"Zerodha": (["Zerodha", "Zerodha new feature"], ["Zerodha", "Varsity by Zerodha", "Markets by Zerodha"]),
-      "Groww": (["Groww", "Groww new feature"], ["Groww", "Trading with Groww", "Mutual Funds at Groww"]),
-      "Angel One": (["Angel One", "Angel One new feature"], ["Angel One"]),
-      "Upstox": (["Upstox", "Upstox new feature"], ["Upstox"]),
-      "Dhan": (["Dhan trading app", "Dhan new feature"], ["Dhan", "AI and Algos by Dhan"]),
-      "ICICI Direct": (["ICICI Direct", "ICICI Direct new feature"], ["ICICI Direct"]),
-      "INDmoney": (["INDmoney", "INDmoney new feature"], ["INDmoney"])}
+
+X = {
+ "Zerodha": ["zerodha","zerodhamarkets","ZerodhaVarsity","CoinByZerodha","nithin0dha","tradingqna","Zero1byZerodha","zerodhacapital","Rainmatterin","ZerodhaAMC","nikhilkamathcio","karthikrangappa","vishaljain2510","SubtextZerodha","zerodhaonline"],
+ "Groww": ["_groww","Growwamcltd","TradeWithGroww_","lkeshre","_harshjain26","ishanishu"],
+ "Angel One": ["AngelOne","AngelOneMF","ionicwealth","DineshThakkar","kenghe","nalinmoniz","abhymurarka","ankitapathak_"],
+ "Upstox": ["upstox","UpstoxSupport","vyaditya"],
+ "Dhan": ["DhanHQ","DhanCares","DhanLive","RaiseTheBarHQ","BeingPractical","JPGupta1"],
+ "ICICI Direct": ["ICICI_Direct","ICICIDirectcare"],
+ "INDmoney": ["INDmoneyApp","ashishkashyap","Nikhilbehl_"]}
+YT = {
+ "Zerodha": ["@zerodhaonline","@marketsbyzerodha","@varsitybyzerodha"],
+ "Groww": ["@Groww","@TradingwithGroww","@MutualFundsAtGroww"],
+ "Angel One": ["@angelone"], "Upstox": ["@UpstoxOfficial"],
+ "Dhan": ["@DhanHQ","@AIandAlgosbyDhan"], "ICICI Direct": ["@ICICIDirectOfficial"], "INDmoney": ["@INDmoney"]}
+BRANDS = {"Zerodha": "Zerodha OR Kite", "Groww": "Groww", "Angel One": '"Angel One"', "Upstox": "Upstox",
+          "Dhan": "Dhan", "ICICI Direct": '"ICICI Direct" OR ICICIdirect', "INDmoney": "INDmoney OR INDstocks"}
+COMPLAINT = '(issue OR glitch OR "not working" OR failed OR withdrawal OR scam OR complaint OR stuck OR down OR error)'
 
 def env():
-    p = os.path.expanduser("~/.cw2_env")
-    for line in open(p):
+    for line in open(os.path.expanduser("~/.cw2_env")):
         if "=" in line:
             k, v = line.strip().split("=", 1)
             os.environ[k] = v.strip().strip('"').strip("'")
@@ -28,72 +40,104 @@ def ar(args, timeout=120):
         out = subprocess.run(["agent-reach"] + args, capture_output=True, text=True, timeout=timeout)
         return json.loads(out.stdout)
     except Exception as e:
-        return {"ok": False, "items": [], "error": {"message": str(e)}}
+        return {"ok": False, "items": [], "error": {"message": str(e)[:120]}}
 
-def norm(s): return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+def err(r): 
+    e = r.get("error") or {}
+    return str(e.get("code") or e.get("message") or "unknown")[:100]
 
 def trim(it):
     for k in ("text", "description"):
         if isinstance(it.get(k), str) and len(it[k]) > LIMIT:
             it[k] = it[k][:LIMIT] + " ...[trimmed]"
+    it.pop("raw", None)
     return it
 
-def age(s):
-    if not s: return None
-    try: d = parsedate_to_datetime(s).date()
-    except Exception:
-        try: d = datetime.date.fromisoformat(s[:10])
-        except Exception: return None
-    return (TODAY - d).days
+def tdt(s):
+    try: return parsedate_to_datetime(s).astimezone(IST)
+    except Exception: return None
+
+def in_window(s): 
+    d = tdt(s)
+    return d is not None and START <= d < END
+
+def ytdlp():
+    p = shutil.which("yt-dlp")
+    if p: return p
+    for c in ["~/.local/share/uv/tools/agent-reach/bin/yt-dlp"]:
+        c = os.path.expanduser(c)
+        if os.path.exists(c): return c
+    return None
 
 env()
-res = {"date": f"{TODAY}-mac", "source": "agent-reach-mac", "x": {}, "youtube": {}}
+res = {"date": f"{TODAY}-mac", "source": "agent-reach-mac-v2", "window": f"{START:%Y-%m-%d %H:%M} to {END:%Y-%m-%d %H:%M} IST", "x": {}, "youtube": {}, "mentions": {}}
 ok = n = 0
+print("window:", res["window"])
 
+# 1) X: all handles the live flow uses
+own = set()
 for co, handles in X.items():
     posts, errs = [], []
     for h in handles:
-        r = ar(["twitter", "tweets", h, "--limit", "10"]); n += 1
+        own.add(h.lower())
+        r = ar(["twitter", "tweets", h, "--limit", "15"]); n += 1
         if r.get("ok"): ok += 1
-        else: errs.append(str((r.get("error") or {}).get("code") or (r.get("error") or {}).get("message"))[:100])
+        else: errs.append(f"{h}:{err(r)}")
         for it in r.get("items") or []:
-            a = age(it.get("published_at"))
-            if a is not None and a <= MAX_AGE:
+            if in_window(it.get("published_at")):
+                it["handle"] = h
                 it["is_retweet"] = (it.get("text") or "").startswith("RT @")
                 posts.append(trim(it))
     res["x"][co] = {"posts": posts, "errors": errs}
+    print(f"X  {co}: posts={len(posts)} errors={errs[:3]}")
 
-for co, (queries, chans) in YT.items():
-    allowed = {norm(c) for c in chans}
-    seen, cand = set(), []
-    for q in queries:
-        r = ar(["youtube", "search", q, "--limit", "10"]); n += 1
-        if r.get("ok"): ok += 1
-        for it in r.get("items") or []:
-            u = it.get("url")
-            if not u or "watch?v=" not in u or u in seen: continue
-            seen.add(u)
-            if not it.get("author") or norm(it["author"]) in allowed:
-                cand.append(it)
-    fresh, old, errs = [], 0, {}
-    for it in cand[:10]:
-        d = ar(["youtube", "read", it["url"]]); n += 1
-        items = d.get("items") or []
+# 2) YouTube: list newest uploads per official channel (yt-dlp, Agent Reach's own YouTube engine), read each for date via Agent Reach
+YD = ytdlp()
+jobs = []
+for co, chans in YT.items():
+    res["youtube"][co] = {"fresh": [], "listed": 0, "older": 0, "errors": {}}
+    for ch in chans:
+        ids = []
+        if not YD:
+            res["youtube"][co]["errors"]["yt-dlp not found"] = 1; continue
+        try:
+            o = subprocess.run([YD, "--flat-playlist", "--playlist-end", "6", "-J", f"https://www.youtube.com/{ch}/videos"], capture_output=True, text=True, timeout=120)
+            ids = [e["id"] for e in json.loads(o.stdout).get("entries", []) if e.get("id")]
+        except Exception as e:
+            res["youtube"][co]["errors"][f"list {ch}"] = 1
+        res["youtube"][co]["listed"] += len(ids)
+        jobs += [(co, f"https://www.youtube.com/watch?v={i}") for i in ids]
+
+def read_one(job):
+    return job[0], ar(["youtube", "read", job[1]])
+with ThreadPoolExecutor(max_workers=4) as ex:
+    for co, d in ex.map(read_one, jobs):
+        n += 1
+        y = res["youtube"][co]; items = d.get("items") or []
         if d.get("ok") and items:
             ok += 1; v = items[0]
-            if norm(v.get("author")) not in allowed: continue
-            a = age(v.get("published_at"))
-            if a is not None and a <= MAX_AGE: fresh.append(trim(v))
-            else: old += 1
+            try: dt = datetime.date.fromisoformat((v.get("published_at") or "")[:10])
+            except Exception: dt = None
+            if dt and START.date() <= dt <= TODAY: y["fresh"].append(trim(v))
+            else: y["older"] += 1
         else:
-            m = str((d.get("error") or {}).get("code") or "unknown"); errs[m] = errs.get(m, 0) + 1
-    res["youtube"][co] = {"candidates": len(cand), "fresh": fresh, "older_than_window": old, "errors": errs}
+            m = err(d); y["errors"][m] = y["errors"].get(m, 0) + 1
+for co, y in res["youtube"].items():
+    print(f"YT {co}: listed={y['listed']} fresh={len(y['fresh'])} older={y['older']} errors={y['errors']}")
+
+# 3) Customer mentions (last, so a failure here cannot affect the X step)
+for co, q in BRANDS.items():
+    r = ar(["twitter", "search", f"({q}) {COMPLAINT} since:{START:%Y-%m-%d}", "--limit", "20"]); n += 1
+    if r.get("ok"): ok += 1
+    hits = []
+    for it in r.get("items") or []:
+        if in_window(it.get("published_at")) and (it.get("author") or "").lower() not in own:
+            hits.append(trim(it))
+    res["mentions"][co] = {"posts": hits[:12], "error": None if r.get("ok") else err(r)}
+    print(f"MENTIONS {co}: kept={len(hits)} error={res['mentions'][co]['error']}")
 
 res["status"] = f"{ok}/{n} fetches succeeded"
 print(res["status"])
-for co in X: print(f"X  {co}: posts_in_window={len(res['x'][co]['posts'])} errors={res['x'][co]['errors']}")
-for co, y in res["youtube"].items(): print(f"YT {co}: fresh={len(y['fresh'])} old={y['older_than_window']} errors={y['errors']}")
-
 req = urllib.request.Request(os.environ["APPS_SCRIPT_URL"],
     data=json.dumps({"token": os.environ["SHARED_TOKEN"], "payload": res}).encode(),
     headers={"Content-Type": "application/json"})

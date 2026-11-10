@@ -1,15 +1,7 @@
 {
   "max_age_days": 3,
   "text_limit": 8000,
-  "youtube": {
-    "Zerodha":      {"queries": ["Zerodha", "Zerodha new feature"],      "channels": ["Zerodha", "Varsity by Zerodha", "Markets by Zerodha"]},
-    "Groww":        {"queries": ["Groww", "Groww new feature"],          "channels": ["Groww", "Trading with Groww", "Mutual Funds at Groww"]},
-    "Angel One":    {"queries": ["Angel One", "Angel One new feature"],  "channels": ["Angel One"]},
-    "Upstox":       {"queries": ["Upstox", "Upstox new feature"],        "channels": ["Upstox"]},
-    "Dhan":         {"queries": ["Dhan trading app", "Dhan new feature"], "channels": ["Dhan", "AI and Algos by Dhan"]},
-    "ICICI Direct": {"queries": ["ICICI Direct", "ICICI Direct new feature"], "channels": ["ICICI Direct"]},
-    "INDmoney":     {"queries": ["INDmoney", "INDmoney new feature"],    "channels": ["INDmoney"]}
-  },
+  "youtube": {},
   "press_pages": [
     "https://zerodha.com/z-connect/updates",
     "https://upstox.com/press-releases/",
