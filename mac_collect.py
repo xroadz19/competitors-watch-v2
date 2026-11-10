@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Competitors Watch 2.0 - Mac collector v2: same sources as the live flow. Read-only."""
-import json, os, re, shutil, subprocess, datetime, urllib.request
+import json, os, re, shutil, subprocess, datetime, time, urllib.request
 from email.utils import parsedate_to_datetime
 from concurrent.futures import ThreadPoolExecutor
 
@@ -46,6 +46,19 @@ def err(r):
     e = r.get("error") or {}
     return str(e.get("code") or e.get("message") or "unknown")[:100]
 
+def arx(args):
+    for i in range(3):
+        r = ar(args, timeout=180)
+        msg = str((r.get("error") or {}).get("message") or "")
+        if r.get("ok"): break
+        if "paused" in msg and i < 2:
+            time.sleep(60); continue
+        if err(r) == "TIMEOUT" and i < 1:
+            time.sleep(20); continue
+        break
+    time.sleep(5)
+    return r
+
 def trim(it):
     for k in ("text", "description"):
         if isinstance(it.get(k), str) and len(it[k]) > LIMIT:
@@ -80,7 +93,7 @@ for co, handles in X.items():
     posts, errs = [], []
     for h in handles:
         own.add(h.lower())
-        r = ar(["twitter", "tweets", h, "--limit", "15"]); n += 1
+        r = arx(["twitter", "tweets", h, "--limit", "10"]); n += 1
         if r.get("ok"): ok += 1
         else: errs.append(f"{h}:{err(r)}")
         for it in r.get("items") or []:
@@ -127,7 +140,7 @@ for co, y in res["youtube"].items():
 
 # 3) Customer mentions (last, so a failure here cannot affect the X step)
 for co, q in BRANDS.items():
-    r = ar(["twitter", "search", f"({q}) {COMPLAINT} since:{START:%Y-%m-%d}", "--limit", "20"]); n += 1
+    r = arx(["twitter", "search", f"({q}) {COMPLAINT} since:{START:%Y-%m-%d}", "--limit", "20"]); n += 1
     if r.get("ok"): ok += 1
     hits = []
     for it in r.get("items") or []:
